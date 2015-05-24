@@ -1,0 +1,161 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Aniko Csabina-Nagy"
+date: "Sunday, May 24, 2015"
+output: html_document
+---
+ 
+## Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+
+The goal of this project is to predict the manner in which they did the exercise. This is the _classe_ variable in the training set. We may use any of the other variables to predict with. We should create a report describing how we built our model, how we used cross validation, what we think the expected out of sample error is, and why we made the choices we did. We will also use our prediction model to predict 20 different test cases.
+
+## Data Sources
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project comes from this original source: http://groupware.les.inf.puc-rio.br/har.
+
+## Preparing the datasets
+
+The pml.traning set contains 19623 records with 160 variables. 
+The dataset has many variables with missing data as well as information that is not relevant to the question being analyzed.
+We remove the columns which contains a lot of missing values and we will remove also the first seven columns, which are not relevant.
+
+
+```{r, echo=TRUE}
+set.seed(12345)
+library(caret)
+pml.training <- read.csv("~/aniko/R prog/downloads/pml-training.csv", header=TRUE, na.strings=c("NA","#DIV/0!",""))
+pml.testing <- read.csv("~/aniko/R prog/downloads/pml-testing.csv", header=TRUE, na.strings=c("NA","#DIV/0!",""))
+dim(pml.training)
+dim(pml.testing)
+pml.training$X <- NULL
+pml.training$user_name <- NULL
+pml.training$raw_timestamp_part_1 <- NULL
+pml.training$raw_timestamp_part_2 <- NULL
+pml.training$cvtd_timestamp<- NULL
+pml.training$new_window <- NULL
+pml.training$num_window <- NULL
+pml.training<-pml.training[,-nearZeroVar(pml.training)]
+pml.training<-pml.training[,colSums(is.na(pml.training)) == 0]
+dim(pml.training)
+
+```
+
+Now we do the same data cleaning with the pml.testing dataset as we did with the pml.traning dataset.
+
+```{r, echo=TRUE}
+
+set.seed(12345)
+pml.testing$X <- NULL
+pml.testing$user_name <- NULL
+pml.testing$raw_timestamp_part_1 <- NULL
+pml.testing$raw_timestamp_part_2 <- NULL
+pml.testing$cvtd_timestamp<- NULL
+pml.testing$new_window <- NULL
+pml.testing$num_window <- NULL
+pml.testing<-pml.testing[,-nearZeroVar(pml.testing)]
+pml.testing<-pml.testing[,colSums(is.na(pml.testing)) == 0]
+dim(pml.testing)
+
+```
+
+The variable we will be predicting on _classe_. We will split the data into a training set to train the model on, and a testing set to test the performanace of the model. (Ratio 70%-30%).
+
+```{r, echo=TRUE}
+
+set.seed(12345)
+inTrain = createDataPartition(y=pml.training$classe, p=0.7, list=FALSE)
+training = pml.training[inTrain,]
+testing = pml.training[-inTrain,]
+
+```
+
+## Train model
+
+I have chosen _Random Forest_ as my modeling method.
+
+Reason to choose _Random Forest_: It is unexcelled in accuracy among current algorithms and it runs efficiently on large data bases. 
+In _Random Forests_ there is no need for cross-validation, or a separate test set to get an unbiased estimate of the test set error, it is estimated internally, during the run.
+
+Due to the limit of my computer`s memory, we reduced the dimension of the data, using the method of PCA. The best _pcaComp_ and _ntree_ values are provided, they are best in terms of prediction error.
+
+
+```{r, echo=TRUE}
+library(randomForest)
+library(caret)
+set.seed(12345)
+preProc <- preProcess(training[, -53], method="pca", pcaComp="50")
+trainingPc <- predict(preProc, training[, -53])
+fit <- randomForest(training$classe ~ ., data = trainingPc, ntree=700)
+fit
+
+```
+
+## Prediction
+
+Using _Random Forest_ the out of sample error should be small. The error will be estimated using the 30% testing set. We will make predictions first on the training than on the testing dataset.
+
+```{r, echo=TRUE}
+
+set.seed(12345)
+trainingPc <- predict(preProc, training[, -53])
+pred <- predict(fit,trainingPc)
+c <- confusionMatrix(pred, training$classe)
+c
+```
+
+
+```{r, echo=TRUE}
+
+set.seed(12345)
+testingPc <- predict(preProc, testing[, -53])
+pred <- predict(fit,testingPc)
+c <- confusionMatrix(pred, testing$classe)
+c
+```
+
+
+```{r, echo=TRUE}
+
+cvRes <- table(pred, testing$classe)
+outOfSampleError <- 1 - (sum(diag(cvRes))/ length(pred))
+cvRes
+outOfSampleError
+
+````
+
+So, I expect the error rate to be = 0.02073067. That includes all possible errors (False positives and false negatives). That means that in 97.9 times the model will give the correct result.
+
+## Results
+
+Predictions on the real testing set.
+
+```{r, echo=TRUE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml.testingPc <- predict(preProc, pml.testing[, -53])
+answers <- predict(fit, pml.testingPc)
+answers
+
+pml_write_files(answers)
+```
+
+
+
+
